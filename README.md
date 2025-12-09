@@ -42,3 +42,20 @@ pip install -r requirements.txt
 # Start Server (Runs on port 8000)
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+## 💻 Frontend Setup (Next.js)
+
+The frontend is built with **Next.js 14 (App Router)**, **TypeScript**, and **Tailwind CSS**. It connects to the FastAPI backend via REST APIs and WebSockets.
+
+### 1. Prerequisites
+
+- Node.js 18+ installed.
+
+### 2. Installation
+
+Navigate to the frontend directory and install dependencies:
+
+```bash
+cd frontend
+npm install
+```
