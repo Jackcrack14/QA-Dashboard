@@ -3,8 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
 from app.api.api import api_router
-
-Base.metadata.create_all(bind=engine)
+from app.services.ai_agent import init_db
 
 app = FastAPI(title=settings.project_name)
 
@@ -19,7 +18,13 @@ app.add_middleware(
 
 app.include_router(api_router, prefix="/api/v1")
 
+@app.on_event("startup")
+def startup_event():
+    init_db()
+    
+
 @app.get("/")
+
 def root():
     return {"message": "System Operational"}
 

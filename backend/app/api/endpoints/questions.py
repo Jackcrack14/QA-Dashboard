@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from fastapi.encoders import jsonable_encoder
 from app.services.ai_agent import generate_suggestion
-
+import json
 from app.core.database import get_db
 from app.models import models
 from app.schemas import schemas
@@ -98,6 +98,12 @@ async def websocket_endpoint(websocket: WebSocket):
         try:
             while True:
                 data = await websocket.receive_text()
+                json_data = json.loads(data)
+                if json_data["type"] == "TYPING_EVENT":
+                    await manager.broadcast({           
+        "type": "TYPING_EVENT",
+        "data": jsonable_encoder(data)
+                    })
                 print(f"DEBUG: Received data from client: {data}")
         except WebSocketDisconnect:
             print("DEBUG: Client disconnected normally.")

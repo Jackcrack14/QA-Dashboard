@@ -1,11 +1,15 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useSocket } from "@/app/hooks/useSocket";
 import { validateWithXHR } from "@/app/lib/validation";
 import { api } from "@/app/services/api";
 import { Question } from "@/types/types";
 
+type typingUser = {
+  is_typing?: boolean;
+  user_name?: string;
+};
 export default function Dashboard() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [input, setInput] = useState("");
@@ -13,14 +17,18 @@ export default function Dashboard() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [replyInput, setReplyInput] = useState("");
-
+  const [replyInputs, setReplyInputs] = useState<{ [key: number]: string }>({});
+  const [typingUser, setIsTypingUser] = useState<{ [key: number]: typingUser }>(
+    {}
+  );
   const [loadingAi, setLoadingAi] = useState<number | null>(null);
 
   const wsUrl =
     process.env.NEXT_PUBLIC_WS_URL || "ws://127.0.0.1:8000/api/v1/questions/ws";
-  const { lastMessage, status, refreshConnection } = useSocket(wsUrl);
-
+  const { lastMessage, status, refreshConnection, sendMessage } =
+    useSocket(wsUrl);
+  const questionRef = useRef<number>(Date.now());
+  const replyRef = useRef<number>(Date.now());
   useEffect(() => {
     const token = localStorage.getItem("token");
     setIsAdmin(!!token);
@@ -33,7 +41,29 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!lastMessage) return;
+    const parsedMessage = JSON.parse(lastMessage.data);
+    if (parsedMessage.type === "TYPING_EVENT") {
+      const myUsername = isAdmin ? "Admin" : "User";
+      if (parsedMessage.user === myUsername) return;
+      setIsTypingUser((prev) => ({
+        ...prev,
+        [parsedMessage.question_id]: {
+          is_typing: true,
+          user_name: parsedMessage.user,
+        },
+      }));
+      setTimeout(() => {
+        setIsTypingUser((prev) => ({
+          ...prev,
+          [parsedMessage.question_id]: {
+            ...prev[parsedMessage.question_id],
+            is_typing: false,
+          },
+        }));
+      }, 3000);
 
+      return;
+    }
     if (lastMessage.type === "NEW_QUESTION") {
       const newQ = {
         ...lastMessage.data,
@@ -50,7 +80,35 @@ export default function Dashboard() {
       );
     }
   }, [lastMessage]);
+  const handleTextAreaInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    const currentTime = Date.now();
+    if (currentTime - questionRef.current > 2000) {
+      sendMessage({
+        type: "TYPING_EVENT",
+        user: isAdmin ? "Admin" : "User",
+      });
 
+      questionRef.current = currentTime;
+    }
+  };
+
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement>, id: number) => {
+    setReplyInputs((prev) => ({
+      ...prev,
+      [id]: e.target.value,
+    }));
+    const currentTime = Date.now();
+    if (currentTime - replyRef.current > 2000) {
+      sendMessage({
+        type: "TYPING_EVENT",
+        question_id: id,
+        user: isAdmin ? "Admin" : "User",
+      });
+
+      replyRef.current = currentTime;
+    }
+  };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -70,11 +128,13 @@ export default function Dashboard() {
 
   const handleReplySubmit = async (e: React.FormEvent, questionId: number) => {
     e.preventDefault();
-    if (!replyInput.trim()) return;
+    const currentReply = replyInputs[questionId] || "";
+    if (!currentReply.trim()) return;
 
     try {
-      await api.postReply(questionId, replyInput);
-      setReplyInput("");
+      await api.postReply(questionId, currentReply);
+      // Clear only this question's input
+      setReplyInputs((prev) => ({ ...prev, [questionId]: "" }));
     } catch (err) {
       alert("Failed to post reply");
     }
@@ -124,8 +184,9 @@ export default function Dashboard() {
     setLoadingAi(id);
     try {
       const suggestion = await api.getAiSuggestion(id, token);
-      setReplyInput(suggestion);
+      setReplyInputs((prev) => ({ ...prev, [id]: suggestion }));
     } catch (err) {
+      console.log(err);
       alert("AI Service unavailable");
     } finally {
       setLoadingAi(null);
@@ -199,7 +260,7 @@ export default function Dashboard() {
               placeholder="What would you like to ask the founders?"
               rows={3}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => handleTextAreaInput(e)}
             />
             <div className="flex justify-between items-center mt-4">
               <span className="text-red-400 text-sm font-medium">{error}</span>
@@ -369,7 +430,12 @@ export default function Dashboard() {
                         </div>
                       ))}
                     </div>
-
+                    {typingUser[q.id]?.is_typing && (
+                      <div className="text-xs text-zinc-500 italic flex items-center gap-1 animate-pulse mb-2">
+                        <span>{typingUser[q.id]?.user_name} is typing</span>
+                        <span className="typing-dots">...</span>
+                      </div>
+                    )}
                     {/* Reply Input Form */}
                     <form
                       onSubmit={(e) => handleReplySubmit(e, q.id)}
@@ -377,8 +443,8 @@ export default function Dashboard() {
                     >
                       <input
                         type="text"
-                        value={replyInput}
-                        onChange={(e) => setReplyInput(e.target.value)}
+                        value={replyInputs[q.id] || ""}
+                        onChange={(e) => handleInput(e, q.id)}
                         placeholder={
                           isAdmin
                             ? "Type reply or use AI ✨"

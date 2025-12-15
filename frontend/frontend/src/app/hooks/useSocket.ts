@@ -1,6 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { SocketMessage } from "@/types/types";
 
+type typingData = {
+  question_id?: number;
+  user: string;
+  type: string;
+};
 export const useSocket = (url: string) => {
   const [lastMessage, setLastMessage] = useState<SocketMessage | null>(null);
   const [status, setStatus] = useState<"CONNECTING" | "OPEN" | "CLOSED">(
@@ -62,6 +67,12 @@ export const useSocket = (url: string) => {
     connect();
   }, [connect]);
 
+  const sendMessage = useCallback((data: typingData) => {
+    if (wsRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(data));
+    }
+  }, []);
+
   useEffect(() => {
     connect();
     return () => {
@@ -70,5 +81,5 @@ export const useSocket = (url: string) => {
     };
   }, [connect]);
 
-  return { lastMessage, status, refreshConnection };
+  return { lastMessage, status, refreshConnection, sendMessage };
 };
